@@ -50,6 +50,7 @@ Contributions are welcome! Please follow these steps:
 
 - [@sujan28-rgb](https://github.com/sujan28-rgb) — Owner
 - [@sujaikarthick17](https://github.com/sujaikarthick17) — Contributor
+- [@jana](https://github.com/jana) — Contributor
 
 ## 📄 License
 
