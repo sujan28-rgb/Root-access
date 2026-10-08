@@ -1,625 +1,970 @@
-# Sentinel — Offline AI Incident Investigator
+# Sentinel Evidence
 
-> **Investigate. Explain. Respond. Privately.**
+## 1. Project Purpose
 
-Sentinel is an **offline AI-powered cybersecurity incident investigator** that analyzes locally collected computer evidence, detects suspicious activity, reconstructs incident timelines, and uses a **locally running Gemma 4 E4B model** to explain what happened and why it matters.
+Sentinel Evidence is a local-first, evidence-grounded security
+investigation system for Windows telemetry.
 
-Unlike cloud-based security copilots, Sentinel keeps sensitive security data **entirely on the user's machine**. No security logs or evidence need to be sent to an external AI service.
+The system ingests documented JSONL evidence, normalizes it, resolves
+process identity, correlates bounded activity patterns, compiles typed
+claims with exact support sets, optionally uses a local Ollama model for
+explanation, validates model output against the evidence, and presents
+the result through a FastAPI + React case viewer.
 
----
+The core principle is:
 
-## 🚨 Problem
+> Evidence first. Claims second. Explanation last.
 
-Cybersecurity investigation often involves sensitive information such as:
+The system must never turn telemetry into a stronger conclusion than the
+evidence supports.
 
-- Authentication logs
-- Process activity
-- Network connections
-- File activity
-- System events
-- User information
+------------------------------------------------------------------------
 
-Sending this information to cloud-based AI systems can create privacy and security concerns.
+## 2. Non-Negotiable Architecture
 
-At the same time, raw security logs are difficult for non-security professionals to understand.
-
-Sentinel addresses both problems by combining:
-
-**Deterministic security analysis + Local AI reasoning**
-
----
-
-## 💡 Solution
-
-Sentinel takes locally available computer evidence and processes it through several stages:
-
-```text
-Local Evidence
-      ↓
-Evidence Parser
-      ↓
-Detection Engine
-      ↓
-Event Correlation
-      ↓
-Structured Security Evidence
-      ↓
-Local Gemma 4 E4B
-      ↓
-AI Analysis
-      ↓
-Incident Timeline + Dashboard + Report
+``` text
+JSONL evidence
+     |
+     v
+[1] Intake + Hashing
+     |
+     v
+[2] Normalization
+     |
+     v
+[3] Detector Adapter
+     |
+     v
+[4] Entity Resolution
+     |
+     v
+[5] Correlation / Scenarios
+     |
+     v
+[6] Typed Claim Compiler
+     |
+     v
+[7] Deterministic Report
+     |
+     +----------------------+
+     |                      |
+     v                      v
+[8] Evidence Packet     [API / UI]
+     |
+     v
+[9] Optional Ollama
+     |
+     v
+[10] Validator
+     |
+     v
+Validated explanation
 ```
 
-The entire AI inference pipeline runs locally.
+Use one Python package, SQLite, FastAPI, React/TypeScript, and an
+optional local model.
 
----
+Do NOT introduce microservices, Kafka, a graph database, or a vector
+database for the MVP.
 
-## 🎯 Key Features
+The engine must work correctly with no model and no UI.
 
-### 1. Local Evidence Analysis
+------------------------------------------------------------------------
 
-Sentinel can analyze locally available:
+## 3. Four-Member Ownership
 
-- Authentication logs
-- Process/activity logs
-- File activity
-- Network connection logs
-- System events
+### Sujan --- Evidence Foundation
 
-The system does not require Internet access to analyze the evidence.
+Owns:
 
----
+-   Intake
+-   Hashing
+-   Manifest
+-   Resource/path limits
+-   JSONL import
+-   Source/Event contracts
+-   Sysmon normalization
+-   Timestamp parsing
+-   Raw field/source locators
+-   SQLite schema/repository
+-   Deterministic event IDs
 
-### 2. Automated Suspicious Activity Detection
+Must NOT implement:
 
-A deterministic Python-based detection engine identifies suspicious patterns such as:
+-   Correlation
+-   Claims
+-   Ollama
+-   React UI
+-   API
 
-- Repeated authentication failures
-- Unusual login activity
-- Suspicious process execution
-- Abnormal file activity
-- Unusual network connections
-- Temporally correlated events
+Primary output:
 
-Example:
-
-```text
-47 failed login attempts
-        ↓
-Same source IP
-        ↓
-Within 90 seconds
-        ↓
-Successful login
-        ↓
-HIGH-RISK EVENT
+``` text
+raw JSONL -> verified normalized Events -> SQLite
 ```
 
----
+------------------------------------------------------------------------
 
-### 3. Event Correlation
+### Pramit --- Correlation and Claims
 
-Individual events are correlated to determine whether they may belong to the same incident.
+Owns:
 
-Example:
+-   Process/entity resolution
+-   `(host, ProcessGuid)` identity
+-   Bounded PID fallback
+-   Parent/child relationships
+-   Typed edges
+-   Three MVP scenarios
+-   Claim types
+-   Predicate registry
+-   Support sets
+-   Contradictory evidence
+-   Claim compiler
+-   Claim validator
 
-```text
-10:31:02 — Suspicious executable created
-10:31:05 — PowerShell launched
-10:31:11 — Network connection established
-10:31:18 — Credential-related file accessed
-10:31:24 — Administrator login
+MVP scenarios:
+
+1.  Suspicious parent/child execution
+2.  Flagged process + outbound connection
+3.  Flagged process + file creation
+
+Must NOT implement:
+
+-   Intake/normalization internals
+-   React UI
+-   FastAPI
+-   Ollama
+
+Primary output:
+
+``` text
+Events -> Edges -> Claims
 ```
 
-Sentinel can combine these events into a single incident timeline rather than treating them as unrelated alerts.
+------------------------------------------------------------------------
 
----
+### Sujai --- AI, Validation, Evaluation
 
-### 4. Local AI Investigation
+Owns:
 
-Relevant structured evidence is passed to a **locally running Gemma 4 E4B model**.
+-   Evidence packet builder
+-   Evidence/counterevidence selection
+-   Fixed model input budget
+-   Ollama integration
+-   Structured model output
+-   AI output validation
+-   Deterministic fallback
+-   Evaluation harness
+-   Baselines
+-   Perturbation/evidence-removal tests
+-   Metrics
 
-The model provides:
+The model is optional.
 
-- Threat classification
-- Severity assessment
-- Natural-language explanation
-- Evidence-based reasoning
-- Recommended investigation steps
+The model may explain approved claims but may NOT create new facts,
+entities, relationships, values, or unsupported ATT&CK assertions.
 
-Example:
+Must NOT implement:
 
-```text
-THREAT LEVEL: HIGH
+-   Core intake
+-   Core correlation
+-   React UI
+-   FastAPI
 
-LIKELY ACTIVITY:
-Credential-guessing / brute-force activity
+Primary output:
 
-EVIDENCE:
-• 47 failed authentication attempts
-• Same source IP
-• 90-second time window
-• Successful login followed the failures
-
-ANALYSIS:
-The clustered authentication failures followed by
-a successful login are consistent with credential
-guessing activity.
-
-RECOMMENDED INVESTIGATION:
-Review the successful session and commands executed
-after authentication.
+``` text
+validated claims -> bounded evidence packet -> optional AI explanation -> validated output
 ```
 
----
+------------------------------------------------------------------------
 
-### 5. "Why?" Explanation
+### Jana --- API, UI, Security
 
-Sentinel allows users to understand why an event was classified as suspicious.
+Owns:
 
-Example:
+-   FastAPI
+-   Case-scoped endpoints
+-   Pagination
+-   React/TypeScript case viewer
+-   Timeline
+-   Claim panel
+-   Evidence drill-down
+-   Security tests
+-   Safe rendering
+-   Case isolation
 
-```text
-WHY WAS THIS MARKED HIGH RISK?
+UI must distinguish:
 
-✓ 47 failed attempts
-✓ Same source IP
-✓ 90-second time window
-✓ Successful login afterward
+-   Observed
+-   Supported inference
+-   Hypothesis
+-   Insufficient evidence
+-   AI draft
 
-These observations triggered the
-high-risk classification.
+Must NOT implement:
+
+-   Normalization
+-   Correlation logic
+-   Claim generation
+-   Ollama logic
+
+Primary output:
+
+``` text
+validated report data -> API -> React evidence viewer
 ```
 
-This makes security analysis understandable even to users without a cybersecurity background.
+------------------------------------------------------------------------
 
----
+## 4. Shared Contracts --- Freeze Before Coding
 
-### 6. Incident Timeline
+All members MUST use these contracts.
 
-Sentinel converts raw events into an easy-to-understand timeline.
+### Source
 
-```text
-10:31:02 ── Failed authentication
-      │
-10:31:05 ── Suspicious process created
-      │
-10:31:11 ── Network connection
-      │
-10:31:18 ── Credential access
-      │
-10:31:24 ── Successful login
-      │
-      ▼
-   HIGH RISK
+``` text
+Source
+- source_id
+- content_hash
+- declared_host
+- collection_metadata
+- export_metadata
+- byte_size
+- acquisition_time_if_known
+- exporter_version
+- original_source_mapping
 ```
 
----
+### Event
 
-### 7. Incident Report
-
-Sentinel can generate a structured incident report containing:
-
-- Incident ID
-- Severity
-- Incident type
-- Evidence
-- Timeline
-- AI analysis
-- Recommended investigation steps
-
----
-
-# 🧠 System Architecture
-
-```text
-                    LOCAL COMPUTER EVIDENCE
-                  /          |          \
-                 /           |           \
-              Logs       Processes      Files
-                 \           |           /
-                  \          |          /
-                   └─────────┬─────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │  Evidence       │
-                    │  Parser         │
-                    │  Python         │
-                    └────────┬────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │ Detection Engine │
-                    │ Rules + Analysis │
-                    └────────┬────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │ Event Correlation│
-                    └────────┬────────┘
-                             ↓
-                    Structured Evidence
-                             ↓
-                    ┌─────────────────┐
-                    │     Ollama      │
-                    └────────┬────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │  Gemma 4 E4B    │
-                    │   Local Model   │
-                    └────────┬────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │   AI Analysis   │
-                    │ Explanation     │
-                    │ Recommendations │
-                    └────────┬────────┘
-                             ↓
-                    ┌─────────────────┐
-                    │    Dashboard    │
-                    │ Timeline        │
-                    │ Evidence        │
-                    │ Reports         │
-                    └─────────────────┘
+``` text
+Event
+- event_id
+- source_id
+- source_locator
+- original_timestamp_text
+- normalized_timestamp
+- timestamp_status
+- host
+- provider
+- channel
+- event_id
+- event_record_id
+- process_guid
+- parent_process_guid
+- raw_fields
+- parse_status
 ```
 
----
+Stable event identity must be derived from source hash + locator.
 
-# 🔒 Offline-First Architecture
+Never invent timezone information.
 
-Sentinel is designed so that the core investigation process does not require an Internet connection.
+Keep original values.
 
-```text
-                INTERNET
-                   ❌
-                   │
-                   X
+### Finding
 
-        ┌──────────────────────────┐
-        │      USER MACHINE       │
-        │                          │
-        │  Evidence                │
-        │     ↓                    │
-        │  Python                  │
-        │     ↓                    │
-        │  Detection Engine        │
-        │     ↓                    │
-        │  Ollama                  │
-        │     ↓                    │
-        │  Gemma 4 E4B             │
-        │     ↓                    │
-        │  RTX 4050                │
-        │     ↓                    │
-        │  Dashboard               │
-        │                          │
-        └──────────────────────────┘
+``` text
+Finding
+- finding_id
+- detector
+- detector_version
+- rule_id
+- source_event_refs
+- original_severity
+- matched_fields
+- mapping_status
 ```
 
-No security evidence needs to leave the machine.
+If a detector row cannot be mapped unambiguously, mark it unlinked and
+exclude it from verified claims.
 
-### Offline Demonstration
+### Edge
 
-During the demonstration:
+``` text
+Edge
+- edge_id
+- source_entity
+- target_entity
+- relationship_type
+- supporting_events
+- identity_assumptions
+- temporal_constraints
+```
 
-1. Disable Wi-Fi.
-2. Load a prepared security evidence dataset.
-3. Run Sentinel.
-4. Analyze the evidence.
-5. Generate the incident timeline.
-6. Ask the local AI for an explanation.
-7. Display the final report.
+`reported_parent_of` and `near_in_time` are different relationship
+types.
 
-The system continues functioning because the AI model is running locally.
+Never treat time adjacency as causality.
 
----
+### Claim
 
-# 🤖 Local AI
+``` text
+Claim
+- claim_id
+- predicate_type
+- bound_entities
+- support_sets
+- contradictory_evidence
+- unmet_prerequisites
+- status
+```
 
-### Model
+Allowed status values:
 
-**Gemma 4 E4B**
+``` text
+observed
+supported_inference
+hypothesis
+insufficient_evidence
+```
 
-### Runtime
+### Run
 
-**Ollama**
+``` text
+Run
+- run_id
+- source_hashes
+- parser_version
+- detector_version
+- rule_version
+- policy_version
+- model_digest
+- prompt_digest
+- parameters
+- limits
+- software_revision
+- timestamps
+- output_hashes
+```
 
-### Hardware
+Every reproducible run must record these values.
 
-**NVIDIA RTX 4050 Laptop GPU**
+------------------------------------------------------------------------
 
-The local model is responsible primarily for:
+## 5. Evidence Rules
 
-- Reasoning over detected evidence
-- Explaining suspicious activity
-- Generating human-readable incident summaries
-- Providing investigation recommendations
-- Converting technical findings into understandable language
+These rules apply to EVERY member.
 
-The deterministic detection layer remains separate from the LLM.
+### Never make these unsupported conclusions
 
----
+Do not infer:
 
-# 🛠️ Technology Stack
+-   phishing from telemetry alone
+-   exfiltration from a network connection
+-   persistence from file creation
+-   successful execution from a process-creation record
+-   causality from timestamp proximity
+-   identity from an ambiguous PID match
 
-| Component | Technology |
-|---|---|
-| Local AI | Gemma 4 E4B |
-| AI Runtime | Ollama |
-| AI Hardware | NVIDIA RTX 4050 |
-| Backend | Python |
-| API | FastAPI |
-| Detection | Python |
-| Frontend | React |
-| Database | SQLite |
-| Visualization | Chart.js / React visualization |
-| Version Control | Git + GitHub |
+Examples:
 
----
+``` text
+Observed:
+Record E2 reports P as Q's parent.
 
-# 📁 Project Structure
+Observed:
+Record E3 reports Q connecting to address A.
 
-```text
-sentinel/
-│
-├── backend/
-│   ├── main.py
-│   ├── parser/
-│   ├── detection/
-│   ├── correlation/
-│   ├── ai/
-│   └── reports/
-│
-├── frontend/
-│   ├── src/
-│   ├── components/
-│   └── pages/
-│
-├── data/
-│   ├── sample_logs/
-│   └── test_incidents/
-│
+Not automatically verified:
+Q exfiltrated data.
+```
+
+### Evidence removal rule
+
+If E3 is the only support for a network-connection claim:
+
+``` text
+remove E3
+    ->
+claim disappears OR becomes insufficient_evidence
+```
+
+It must never remain verified without another valid support set.
+
+### Duplicate evidence rule
+
+Repeated exports of the same source are not independent corroboration.
+
+Always retain provenance.
+
+------------------------------------------------------------------------
+
+## 6. Entity Resolution
+
+Preferred process identity:
+
+``` text
+(host, ProcessGuid)
+```
+
+PID is only a bounded fallback.
+
+Fallback PID matching must consider:
+
+-   host
+-   time interval
+-   available process context
+
+If identity is ambiguous:
+
+``` text
+do not merge
+```
+
+Keep it unresolved and surface the uncertainty.
+
+Never merge processes across hosts.
+
+------------------------------------------------------------------------
+
+## 7. Input and Intake
+
+MVP input is a documented JSONL export profile containing complete
+selected event records.
+
+Imported JSONL is itself evidence.
+
+Before processing:
+
+1.  Hash original bytes.
+2.  Validate file/path limits.
+3.  Prevent traversal and unsafe symlink behavior.
+4.  Store manifest information.
+5.  Finalize imports atomically.
+6.  Preserve source locators.
+7.  Normalize without deleting raw values.
+
+Do not implement a new binary EVTX parser.
+
+If EVTX bytes are supplied, preserve them when required, but rely on the
+documented exporter mapping.
+
+------------------------------------------------------------------------
+
+## 8. Repository Layout
+
+``` text
+sentinel-evidence/
+├── pyproject.toml
+├── uv.lock
+├── src/sentinel_evidence/
+│   ├── cli.py
+│   ├── contracts.py
+│   ├── intake/
+│   │   ├── manifest.py
+│   │   ├── limits.py
+│   │   └── store.py
+│   ├── adapters/
+│   │   ├── jsonl.py
+│   │   └── hayabusa.py
+│   ├── normalize/
+│   │   ├── sysmon.py
+│   │   ├── time.py
+│   │   └── identity.py
+│   ├── correlate/
+│   │   ├── edges.py
+│   │   └── scenarios.py
+│   ├── claims/
+│   │   ├── types.py
+│   │   ├── predicates.py
+│   │   ├── compile.py
+│   │   └── validate.py
+│   ├── explain/
+│   │   ├── packet.py
+│   │   ├── ollama.py
+│   │   └── schemas.py
+│   ├── report/
+│   │   ├── template.py
+│   │   └── export.py
+│   ├── db/
+│   │   ├── schema.sql
+│   │   ├── repository.py
+│   │   └── migrations/
+│   └── api/
+│       ├── app.py
+│       ├── auth.py
+│       ├── cases.py
+│       └── jobs.py
+├── policies/
+│   ├── scenarios.yaml
+│   ├── severity.yaml
+│   └── limits.yaml
+├── prompts/
+│   └── explain-v1.txt
+├── web/
+│   └── src/
+│       ├── CaseView.tsx
+│       ├── ClaimPanel.tsx
+│       ├── Timeline.tsx
+│       └── api.ts
 ├── tests/
-│
-├── README.md
-├── requirements.txt
-└── .gitignore
+│   ├── unit/
+│   ├── property/
+│   ├── integration/
+│   └── security/
+├── eval/
+│   ├── datasets.yaml
+│   ├── labels/
+│   ├── baselines/
+│   ├── perturb.py
+│   ├── run.py
+│   └── metrics.py
+├── fixtures/
+│   ├── tiny-supported/
+│   ├── tiny-ambiguous/
+│   └── tiny-hostile/
+└── docs/
+    ├── decision.md
+    ├── threat-model.md
+    ├── evidence-contract.md
+    └── evaluation.md
 ```
 
----
+Do not change this architecture casually.
 
-# ⚙️ Installation
+------------------------------------------------------------------------
 
-## Prerequisites
+## 9. Integration Dependencies
 
-- Python 3.11+
-- Git
-- Node.js
-- Ollama
-- NVIDIA GPU recommended for primary deployment
+The dependency order is:
 
----
-
-## 1. Install Ollama
-
-Install Ollama for your operating system.
-
-Verify:
-
-```bash
-ollama --version
+``` text
+Sujan
+  |
+  v
+contracts + normalized Events
+  |
+  v
+Pramit
+  |
+  v
+Edges + Claims
+  |
+  +----------------+
+  |                |
+  v                v
+Sujai             Jana
+AI/evaluation     API/UI
 ```
 
----
+However, Jana can build against the frozen contracts before the backend
+is complete, and Sujai can build the evaluation/packet schemas before
+Ollama is connected.
 
-## 2. Download the Local Model
+### Required implementation order
 
-```bash
-ollama pull gemma4:e4b
+#### Phase 0 --- Shared contracts
+
+Everyone agrees on:
+
+-   Source
+-   Event
+-   Finding
+-   Edge
+-   Claim
+-   Run
+-   API response shapes
+
+No implementation should silently change these.
+
+#### Phase 1 --- Foundation
+
+Sujan:
+
+``` text
+JSONL -> Source -> Event -> SQLite
 ```
 
-Test:
+Pramit starts only after the Event contract is stable.
 
-```bash
-ollama run gemma4:e4b
+Jana can create API types from the same contracts.
+
+Sujai can create evidence packet schemas from Claim/Event contracts.
+
+#### Phase 2 --- Deterministic engine
+
+Pramit:
+
+``` text
+Event -> identity -> edges -> scenarios -> claims
 ```
 
----
+The deterministic claim engine must work without AI.
 
-## 3. Clone the Repository
+#### Phase 3 --- API/UI
 
-```bash
-git clone <repository-url>
-cd sentinel
+Jana:
+
+``` text
+SQLite/claims -> FastAPI -> React
 ```
 
----
+#### Phase 4 --- AI
 
-## 4. Create Python Environment
+Sujai:
 
-```bash
-python -m venv .venv
+``` text
+validated claims -> evidence packet -> Ollama -> validator
 ```
 
-### Windows
+AI is added after deterministic claims work.
 
-```bash
-.venv\Scripts\activate
+#### Phase 5 --- Integration
+
+All four run:
+
+-   supported fixture
+-   ambiguous fixture
+-   hostile/injection fixture
+-   evidence-removal fixture
+
+before declaring MVP complete.
+
+------------------------------------------------------------------------
+
+## 10. Git/Antigravity Rules
+
+Each member works in their assigned area.
+
+Before editing:
+
+1.  Inspect existing repository.
+2.  Read this README.
+3.  Read existing contracts.
+4.  Reuse existing code.
+5.  Do not rewrite another member's module.
+6.  Do not silently change shared schemas.
+7.  Add tests with every meaningful feature.
+8.  Run relevant tests before committing.
+
+If a shared contract must change:
+
+``` text
+STOP
+-> document reason
+-> update contract
+-> update affected members
+-> update tests
+-> continue
 ```
 
-### macOS/Linux
+Never solve integration problems by creating duplicate models or
+adapters.
 
-```bash
-source .venv/bin/activate
+There must be ONE canonical definition for each core object.
+
+------------------------------------------------------------------------
+
+## 11. Antigravity Instructions
+
+Every Antigravity agent should follow this sequence:
+
+``` text
+1. Read README.md completely.
+2. Inspect the existing repository.
+3. Identify what already exists.
+4. Identify your assigned ownership area.
+5. Check shared contracts before coding.
+6. Implement only your assigned responsibility.
+7. Reuse existing interfaces.
+8. Add tests.
+9. Run tests.
+10. Report changed files and integration assumptions.
 ```
 
----
+Do not create speculative architecture.
 
-## 5. Install Dependencies
+Do not add dependencies unless necessary.
 
-```bash
-pip install -r requirements.txt
+Do not replace working code simply because another implementation looks
+cleaner.
+
+Prefer small, testable changes.
+
+------------------------------------------------------------------------
+
+## 12. Member Prompts
+
+### Sujan
+
+``` text
+Read README.md first. You own the Evidence Foundation.
+
+Implement only intake, hashing/manifest, limits, JSONL import, Source/Event contracts, Sysmon normalization, timestamp parsing, raw locators, SQLite repository, and deterministic event IDs.
+
+Do not implement correlation, claims, AI, API, or React.
+
+Use the shared contracts exactly. Preserve raw values. Never invent timezone. Add tests and run them. Inspect existing code before changing anything.
 ```
 
----
+### Pramit
 
-## 6. Start the Backend
+``` text
+Read README.md first. You own Correlation + Claims.
 
-```bash
-uvicorn backend.main:app --reload
+Use the existing Event/Source contracts. Implement process identity using (host, ProcessGuid), bounded PID fallback, parent/child edges, the 3 MVP scenarios, typed predicates, support sets, contradiction handling, claim compilation, and validation.
+
+Do not implement intake, API, React, or Ollama.
+
+Never infer phishing, exfiltration, persistence, successful execution, or causality from insufficient telemetry. Add evidence-removal and ambiguity tests. Run tests.
 ```
 
----
+### Sujai
 
-## 7. Start the Frontend
+``` text
+Read README.md first. You own AI + Evaluation.
 
-```bash
-cd frontend
-npm install
-npm run dev
+Consume only validated Claims/Events. Implement evidence packets, fixed evidence budgets, Ollama integration, structured output, validator, fallback, benchmark harness, baselines, perturbations, and metrics.
+
+AI must never introduce facts, entities, relationships, values, or unsupported ATT&CK claims.
+
+Do not implement intake, correlation, FastAPI, or React. Keep AI optional. Add adversarial/evidence-removal tests and run them.
 ```
 
----
+### Jana
 
-# 🔄 Example Workflow
+``` text
+Read README.md first. You own API + React + Security.
 
-### Input
+Use the canonical contracts. Implement FastAPI case-scoped endpoints, pagination, React case viewer, timeline, claim panel, evidence drill-down, and security tests.
 
-```text
-47 failed authentication attempts
-from the same IP address
-within 90 seconds
-followed by a successful login.
+Clearly distinguish observed, supported inference, hypothesis, insufficient evidence, and AI draft.
+
+Do not implement normalization, correlation, claim generation, or Ollama. Do not duplicate domain models. Inspect existing code first, integrate with current contracts, and run tests.
 ```
 
-### Detection Engine
+------------------------------------------------------------------------
 
-```text
-Event Type: Authentication anomaly
-Attempts: 47
-Source: 192.168.1.25
-Duration: 90 seconds
-Successful login: Yes
+## 13. Testing Requirements
 
-Risk: HIGH
+Minimum fixtures:
+
+### Fixture A --- Supported
+
+A process creation followed by a bounded, supported network/file
+activity sequence.
+
+Expected:
+
+``` text
+identity resolves
+edges are created
+supported claims are generated
+evidence drill-down works
 ```
 
-### Local AI
+### Fixture B --- Ambiguous
 
-Gemma 4 E4B analyzes the structured evidence.
+Missing/conflicting process identity or PID reuse.
 
-### Output
+Expected:
 
-```text
-Potential credential-guessing activity.
-
-The high number of authentication failures from a
-single source within a short time period, followed
-by a successful login, warrants investigation.
-
-Recommended action:
-Review the successful session and associated activity.
+``` text
+identity remains ambiguous
+no unsafe merge
+claim becomes insufficient_evidence where required
 ```
 
----
+### Fixture C --- Hostile
 
-# 🧪 Testing Offline Mode
+Contains:
 
-To verify that the project does not depend on cloud AI:
+-   prompt injection text
+-   malicious HTML
+-   path traversal attempts
+-   malformed values
 
-```text
-1. Start Sentinel
-2. Disable Wi-Fi
-3. Load sample evidence
-4. Run analysis
-5. Generate AI explanation
+Expected:
+
+``` text
+no code execution
+no XSS
+no unsafe file access
+no unsupported claim acceptance
 ```
 
-The complete analysis should continue to function without Internet access.
+### Fixture D --- Evidence removal
 
----
+Start with a valid claim.
 
-# 👥 Team Responsibilities
+Remove its only supporting event.
 
-### AI / Local Inference
+Expected:
 
-- Ollama setup
-- Gemma integration
-- Prompt engineering
-- Structured AI output
+``` text
+claim removed OR insufficient_evidence
+```
 
-### Security Analysis
+Never:
 
-- Log parsing
-- Detection rules
-- Event correlation
-- Risk scoring
+``` text
+claim remains verified
+```
 
-### Frontend
+------------------------------------------------------------------------
 
-- Dashboard
-- Incident timeline
-- Evidence visualization
-- AI explanation interface
+## 14. API/UI Contract
 
-### Integration / QA
+The UI must never independently calculate security claims.
 
-- API integration
-- Testing
-- Sample datasets
-- Documentation
-- Demo preparation
+The backend sends validated claim objects.
 
----
+Example:
 
-# 🚀 Future Improvements
+``` json
+{
+  "claim_id": "C123",
+  "status": "supported_inference",
+  "predicate": "process_connected_to_address",
+  "entities": ["Q", "A"],
+  "support": [
+    {
+      "event_id": "E3",
+      "fields": ["DestinationIp", "ProcessGuid"]
+    }
+  ],
+  "contradictory_evidence": []
+}
+```
 
-If additional development time is available:
+Clicking the claim must expose:
 
-- Real-time system monitoring
-- More detection rules
-- Additional evidence sources
-- Interactive incident graphs
-- Natural-language investigation queries
-- Automated report generation
-- Additional local AI models
-- Explainable risk scoring
-- Cross-platform evidence collectors
+``` text
+Claim
+ -> predicate
+ -> bound entities
+ -> supporting fields
+ -> event ID
+ -> source locator
+ -> original evidence
+```
 
----
+------------------------------------------------------------------------
 
-# ⚠️ Scope & Disclaimer
+## 15. AI Safety Contract
 
-Sentinel is an **incident investigation and analysis prototype**, not a replacement for a professional Security Operations Center, antivirus product, or endpoint detection and response platform.
+The local model is an explanation component, not the source of truth.
 
-Its findings should be treated as investigative guidance and verified by a security professional.
+Allowed:
 
----
+``` text
+Explain approved claim C123 in simpler language.
+```
 
-# 🏆 Hackathon Focus
+Not allowed:
 
-Sentinel is designed around the Hack Day's local-AI requirement:
+``` text
+Invent an event explaining why C123 happened.
+```
 
-### Local
+Validator must reject:
 
-Security evidence remains on the user's machine.
+-   unknown IDs
+-   new entities
+-   altered values
+-   unsupported relationships
+-   unsupported ATT&CK mappings
+-   citations that exist but do not support the sentence
 
-### Open Source
+Canonical fact sentences should be machine-checked.
 
-The system is built around open-source development tools and locally deployed models.
+Free-form AI prose must remain visibly marked as AI-generated
+draft/explanation.
 
-### AI
+------------------------------------------------------------------------
 
-Gemma 4 E4B provides local reasoning and explanation.
+## 16. Evaluation
 
-### Hardware
+Use:
 
-AI inference runs on the team's own hardware.
+-   tiny hand-authored fixtures
+-   public Windows telemetry where permitted
+-   fresh controlled Windows VM captures
 
-### Explainable
+Do not treat generated variants as independent samples.
 
-Every alert is accompanied by the evidence that contributed to the classification.
+Keep all descendants of one original episode in the same split.
 
----
+Compare:
 
-## License
+``` text
+B0 = detector/timeline baseline
+B1 = deterministic report
+B2 = unconstrained local model
+B3 = model + citations without claim enforcement
+Proposed = typed claims + evidence validation + optional AI
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Measure:
+
+-   precision
+-   recall
+-   false-positive rate
+-   correlation precision/recall
+-   incorrect joins
+-   unresolved identity rate
+-   supported factual claims
+-   unsupported claims
+-   critical-fact coverage
+-   citation validity
+-   citation support
+-   evidence sensitivity
+-   latency
+-   RAM/VRAM
+-   model failure rate
+-   security failures
+
+Do not claim enterprise-level performance from a small pilot.
+
+------------------------------------------------------------------------
+
+## 17. Definition of Done
+
+The MVP is complete only when:
+
+-   Intake is reproducible.
+-   Source hashes are recorded.
+-   Events preserve raw values and locators.
+-   Process identity is deterministic and ambiguity-aware.
+-   Three bounded scenarios work.
+-   Every accepted factual claim has valid support.
+-   Evidence removal withdraws unsupported claims.
+-   Deterministic reporting works without AI.
+-   Ollama is optional.
+-   AI hallucinated references are rejected.
+-   API is case-scoped.
+-   UI provides evidence drill-down.
+-   Security tests pass.
+-   Evaluation can replay the same engine headlessly.
+-   Run metadata is reproducible.
+-   All four members' modules integrate without duplicate domain models.
+
+------------------------------------------------------------------------
+
+## 18. Final Engineering Principle
+
+Do not optimize for a convincing story.
+
+Optimize for:
+
+``` text
+same input
+   ->
+same normalized evidence
+   ->
+same deterministic claims
+   ->
+traceable support
+   ->
+safe explanation
+```
+
+If the evidence is insufficient, the correct result is:
+
+``` text
+INSUFFICIENT EVIDENCE
+```
+
+That is a successful result, not a failure.
